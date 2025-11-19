@@ -15,8 +15,14 @@ interface CartItemFromAPI {
   addedAt?: string;
 }
 
+interface CartItemWithBook {
+  book: Book;
+  quantity: number;
+  _id?: string;
+}
+
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<{ book: Book; quantity: number }[]>([]);
+  const [cartItems, setCartItems] = useState<CartItemWithBook[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,13 +40,29 @@ export default function CartPage() {
       
       const data: CartItemFromAPI[] = await response.json();
       
-      // Map cart items from API to include book details
-      const itemsWithBooks = data
-        .map(item => {
-          const book = books.find(b => b.id === item.bookId);
-          return book ? { book, quantity: item.quantity } : null;
-        })
-        .filter((item): item is { book: Book; quantity: number } => item !== null);
+      // Map cart items from API to include book details and merge duplicates
+      const itemsMap = new Map<string, CartItemWithBook>();
+      
+      data.forEach(item => {
+        const book = books.find(b => b.id === item.bookId);
+        if (book) {
+          const existingItem = itemsMap.get(item.bookId);
+          if (existingItem) {
+            // Merge duplicates by adding quantities
+            existingItem.quantity += item.quantity;
+          } else {
+            // Add new item
+            itemsMap.set(item.bookId, {
+              book,
+              quantity: item.quantity,
+              _id: item._id
+            });
+          }
+        }
+      });
+      
+      // Convert map to array
+      const itemsWithBooks = Array.from(itemsMap.values());
       
       setCartItems(itemsWithBooks);
     } catch (err) {
@@ -66,27 +88,52 @@ export default function CartPage() {
     setCartItems(updatedItems);
 
     try {
-      // Find the cart item ID from MongoDB
+      // Find all cart items with this bookId from MongoDB
       const response = await fetch('/api/cart');
       if (response.ok) {
         const allCartItems: CartItemFromAPI[] = await response.json();
-        const cartItem = allCartItems.find(item => item.bookId === bookId);
+        const itemsToUpdate = allCartItems.filter(item => item.bookId === bookId);
         
-        if (cartItem && cartItem._id) {
-          // Update in MongoDB using PUT
-          const updateResponse = await fetch('/api/cart', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              id: cartItem._id,
-              quantity: newQuantity,
-            }),
-          });
+        if (itemsToUpdate.length > 0) {
+          // If there are multiple items, delete all and create one with new quantity
+          if (itemsToUpdate.length > 1) {
+            // Delete all existing items
+            await Promise.all(
+              itemsToUpdate.map(item => 
+                item._id ? fetch(`/api/cart?itemId=${item._id}`, { method: 'DELETE' }) : Promise.resolve()
+              )
+            );
+            // Create new item with updated quantity
+            await fetch('/api/cart', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userId: 'guest-user',
+                bookId: bookId,
+                quantity: newQuantity,
+              }),
+            });
+          } else {
+            // Update single item
+            const cartItem = itemsToUpdate[0];
+            if (cartItem._id) {
+              const updateResponse = await fetch('/api/cart', {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  id: cartItem._id,
+                  quantity: newQuantity,
+                }),
+              });
 
-          if (!updateResponse.ok) {
-            throw new Error('Failed to update quantity');
+              if (!updateResponse.ok) {
+                throw new Error('Failed to update quantity');
+              }
+            }
           }
         }
       }
@@ -106,22 +153,18 @@ export default function CartPage() {
     setCartItems(updatedItems);
 
     try {
-      // Find the cart item ID from MongoDB
+      // Find all cart items with this bookId from MongoDB and delete them all
       const response = await fetch('/api/cart');
       if (response.ok) {
         const allCartItems: CartItemFromAPI[] = await response.json();
-        const cartItem = allCartItems.find(item => item.bookId === bookId);
+        const itemsToDelete = allCartItems.filter(item => item.bookId === bookId);
         
-        if (cartItem && cartItem._id) {
-          // Delete from MongoDB
-          const deleteResponse = await fetch(`/api/cart?itemId=${cartItem._id}`, {
-            method: 'DELETE',
-          });
-
-          if (!deleteResponse.ok) {
-            throw new Error('Failed to remove item');
-          }
-        }
+        // Delete all items with this bookId
+        await Promise.all(
+          itemsToDelete.map(item => 
+            item._id ? fetch(`/api/cart?itemId=${item._id}`, { method: 'DELETE' }) : Promise.resolve()
+          )
+        );
       }
       
       // Notify navbar
@@ -199,9 +242,9 @@ export default function CartPage() {
       ) : (
         <>
           <div className="bg-white rounded-lg shadow-md">
-            {cartItems.map((item) => (
+            {cartItems.map((item, index) => (
               <CartItem
-                key={item.book.id}
+                key={item._id || `${item.book.id}-${index}`}
                 item={item}
                 onUpdateQuantity={updateQuantity}
                 onRemoveItem={removeItem}
