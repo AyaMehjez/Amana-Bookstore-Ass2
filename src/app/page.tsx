@@ -16,8 +16,8 @@ export default function HomePage() {
       try {
         const response = await fetch('/api/cart');
         if (response.ok) {
-          const cartItems = await response.json();
-          const addedBooks = new Set(cartItems.map((item: { bookId: string }) => item.bookId));
+          const cartItems: { bookId: string }[] = await response.json();
+          const addedBooks = new Set<string>(cartItems.map((item) => item.bookId));
           setAddedToCart(addedBooks);
         }
       } catch (error) {
