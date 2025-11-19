@@ -1,13 +1,12 @@
 // src/app/api/books/route.ts
 import { NextResponse } from 'next/server';
-import { getDatabase, closeConnection } from '@/lib/mongodb';
+import { getDatabase } from '@/lib/mongodb';
 
 /**
  * GET /api/books
  * Retrieves all documents from the "books" collection
  */
 export async function GET() {
-  let client;
   try {
     // Establish connection to the database
     const db = await getDatabase();
