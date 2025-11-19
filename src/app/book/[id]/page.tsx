@@ -2,11 +2,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { books } from '../../data/books';
 import { reviews } from '../../data/reviews';
-import { Book, CartItem, Review } from '../../types';
+import { Book, Review } from '../../types';
 
 interface CartItemFromAPI {
   _id?: string;
@@ -27,7 +27,6 @@ export default function BookDetailPage() {
   const [cartQuantity, setCartQuantity] = useState(0);
 
   const params = useParams();
-  const router = useRouter();
   const { id } = params;
 
   // Check if book is in cart and get its quantity
