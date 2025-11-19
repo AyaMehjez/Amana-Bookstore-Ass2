@@ -1,31 +1,31 @@
 // src/lib/mongodb.ts
 import { MongoClient, Db } from 'mongodb';
 
-const uri = process.env.MONGODB_URI || 'mongodb+srv://aya:aya123@cluster0.kuiihgt.mongodb.net/AmanaBookstore';
-const dbName = 'AmanaBookstore';
+const uri = process.env.MONGODB_URI;
+const dbName = process.env.MONGODB_DB_NAME || 'AmanaBookstore';
 
 let client: MongoClient | null = null;
 let clientPromise: Promise<MongoClient> | null = null;
 
 if (!uri) {
-  throw new Error('Please add your Mongo URI to .env.local');
+  throw new Error('Please add your MONGODB_URI to .env.local file');
 }
 
 if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable so that the value
   // is preserved across module reloads caused by HMR (Hot Module Replacement).
-  let globalWithMongo = global as typeof globalThis & {
+  const globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
   };
 
   if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri);
+    client = new MongoClient(uri!);
     globalWithMongo._mongoClientPromise = client.connect();
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
   // In production mode, it's best to not use a global variable.
-  client = new MongoClient(uri);
+  client = new MongoClient(uri!);
   clientPromise = client.connect();
 }
 
@@ -34,6 +34,9 @@ if (process.env.NODE_ENV === 'development') {
  */
 export async function getClient(): Promise<MongoClient> {
   if (!clientPromise) {
+    if (!uri) {
+      throw new Error('MONGODB_URI is not set');
+    }
     client = new MongoClient(uri);
     clientPromise = client.connect();
   }
